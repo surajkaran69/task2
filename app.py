@@ -9,9 +9,9 @@ import pickle
 import streamlit as st
 
 # Paths
-model_path = '/content/emotion.pkl'  # Path to your trained model
-label_encoder_path = '/content/label_encoder.pkl'  # Path to your label encoder
-output_csv_path = '/content/attendance.csv'  # Output attendance file
+model_path = "emotion_detection_model.pkl"  # Path to your trained model
+label_encoder_path = "label_encoder.pkl"  # Path to your label encoder
+output_csv_path = 'attendance.csv'  # Output attendance file
 
 # Time Window
 start_time = "09:30"
