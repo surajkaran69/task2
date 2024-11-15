@@ -1,4 +1,4 @@
-import streamlit as st
+oimport streamlit as st
 import torch
 import pickle
 from torchvision import transforms
@@ -8,7 +8,7 @@ import pandas as pd
 import datetime
 
 # Load the trained model and label encoder
-model_path = "emotion_model.pkl"
+model_path = "emotion_detection_model.pkl"
 label_encoder_path = "label_encoder.pkl"
 
 with open(model_path, 'rb') as f:
