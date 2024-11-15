@@ -28,7 +28,7 @@ class EmotionRecognitionModel(nn.Module):
 model_path = "emotion_model.pkl"
 label_encoder_path = "label_encoder.pkl"
 
-# Load model on CPU (even if it was trained on a GPU)
+# Load model on CPU 
 with open(model_path, 'rb') as f:
     model = pickle.load(f, map_location=torch.device('cpu'))
 
