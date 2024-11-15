@@ -28,10 +28,17 @@ class EmotionRecognitionModel(nn.Module):
 model_path = "emotion_detection_model.pkl"
 label_encoder_path = "label_encoder.pkl"
 
-# Load model on CPU 
-with open(model_path, 'rb') as f:
-    model = pickle.load(f, map_location=torch.device('cpu'))
+# Load model architecture
+model = EmotionRecognitionModel(num_classes=7)  # Adjust number of classes according to your model
 
+# Load model weights (this assumes you saved the state_dict in pickle)
+with open(model_path, 'rb') as f:
+    model_weights = pickle.load(f)
+
+# Load the weights into the model
+model.load_state_dict(model_weights)
+
+# Load label encoder
 with open(label_encoder_path, 'rb') as f:
     label_encoder = pickle.load(f)
 
