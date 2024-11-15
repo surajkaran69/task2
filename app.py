@@ -1,4 +1,4 @@
-oimport streamlit as st
+import streamlit as st
 import torch
 import pickle
 from torchvision import transforms
