@@ -24,19 +24,15 @@ class EmotionRecognitionModel(nn.Module):
         x = self.fc3(x)  # Output layer
         return x
 
-# Load the trained model and label encoder
+# Emotion classes (no label encoding needed)
+emotion_classes = ["surprise", "sad", "neutral", "happy", "fear", "disgust", "contempt", "anger"]
+
+# Load the trained model
 model_path = "emotion_detection_model.pkl"
-label_encoder_path = "label_encoder.pkl"
 
-# Load model architecture
-model = EmotionRecognitionModel(num_classes=7)  # Adjust number of classes according to your model
-
-# Load model weights (torch.load ensures it loads onto the CPU)
-model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
-
-# Load label encoder
-with open(label_encoder_path, 'rb') as f:
-    label_encoder = pickle.load(f)
+# Load model on CPU
+with open(model_path, 'rb') as f:
+    model = pickle.load(f, map_location=torch.device('cpu'))
 
 # Set the model to evaluation mode
 model.eval()
@@ -66,7 +62,7 @@ if uploaded_file is not None:
     with torch.no_grad():
         outputs = model(input_image)
         _, predicted = torch.max(outputs, 1)
-        predicted_label = label_encoder.inverse_transform([predicted.item()])[0]
+        predicted_label = emotion_classes[predicted.item()]
 
     st.write(f"Predicted Emotion: **{predicted_label}**")
 
