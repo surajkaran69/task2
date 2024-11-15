@@ -1,18 +1,15 @@
 import streamlit as st
 import torch
-from PIL import Image
-import numpy as np
 import pickle
-import pandas as pd
 from torchvision import transforms
-from torch import nn
-from io import BytesIO
-import datetime
+from PIL import Image
 import os
+import pandas as pd
+import datetime
 
 # Load the trained model and label encoder
-model_path = 'emotion_detection_model.pkl'
-label_encoder_path = 'label_encoder.pkl'
+model_path = "emotion_model.pkl"
+label_encoder_path = "label_encoder.pkl"
 
 with open(model_path, 'rb') as f:
     model = pickle.load(f)
@@ -20,74 +17,47 @@ with open(model_path, 'rb') as f:
 with open(label_encoder_path, 'rb') as f:
     label_encoder = pickle.load(f)
 
-# Define the device
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-model = model.to(device)
+# Set the model to evaluation mode
+model.eval()
 
-# Define the transformations
+# Define image transformations
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
     transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
 ])
 
-# Helper function to predict emotion
-def predict_emotion(image):
-    image = image.convert("RGB")
-    image = transform(image).unsqueeze(0).to(device)
-    model.eval()
+# Streamlit app title
+st.title("Emotion Recognition System")
+
+# Upload an image
+uploaded_file = st.file_uploader("Choose an image file", type=["jpg", "jpeg", "png"])
+
+if uploaded_file is not None:
+    # Display the uploaded image
+    image = Image.open(uploaded_file).convert('RGB')
+    st.image(image, caption="Uploaded Image", use_column_width=True)
+
+    # Preprocess the image
+    input_image = transform(image).unsqueeze(0)
+
+    # Predict emotion
     with torch.no_grad():
-        outputs = model(image)
+        outputs = model(input_image)
         _, predicted = torch.max(outputs, 1)
-        emotion = label_encoder.inverse_transform([predicted.item()])
-    return emotion[0]
+        predicted_label = label_encoder.inverse_transform([predicted.item()])[0]
 
-# Streamlit UI
-st.title('Attendance and Emotion Detection System')
+    st.write(f"Predicted Emotion: **{predicted_label}**")
 
-# Time check to only allow detection between 9:30 AM and 10:00 AM
-current_time = datetime.datetime.now().time()
-start_time = datetime.time(9, 30)
-end_time = datetime.time(10, 0)
+    # Option to download results as CSV
+    timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    result_data = pd.DataFrame({'Timestamp': [timestamp], 'Emotion': [predicted_label]})
+    
+    csv = result_data.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="Download Results as CSV",
+        data=csv,
+        file_name='emotion_results.csv',
+        mime='text/csv'
+    )
 
-if start_time <= current_time <= end_time:
-    # Image Upload
-    uploaded_file = st.file_uploader("Upload an image of the student", type=["jpg", "jpeg", "png"])
-
-    if uploaded_file is not None:
-        # Open the uploaded image
-        image = Image.open(uploaded_file)
-        st.image(image, caption="Uploaded Image", use_column_width=True)
-
-        # Predict emotion
-        predicted_emotion = predict_emotion(image)
-        st.write(f"Predicted Emotion: {predicted_emotion}")
-
-        # Log student presence and emotion with timestamp
-        if st.button("Mark Attendance"):
-            current_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            student_data = {
-                "Timestamp": current_time,
-                "Emotion": predicted_emotion,
-                "Student": "Present"  # Assume the student is present when detected
-            }
-
-            # Load the existing attendance CSV, if available
-            if os.path.exists("attendance_log.csv"):
-                attendance_df = pd.read_csv("attendance_log.csv")
-            else:
-                attendance_df = pd.DataFrame(columns=["Timestamp", "Emotion", "Student"])
-
-            # Append new data
-            attendance_df = attendance_df.append(student_data, ignore_index=True)
-            attendance_df.to_csv("attendance_log.csv", index=False)
-
-            st.success("Attendance marked successfully!")
-
-            # Download link for the CSV
-            csv_file = BytesIO()
-            attendance_df.to_csv(csv_file, index=False)
-            csv_file.seek(0)
-            st.download_button(label="Download Attendance Log", data=csv_file, file_name="attendance_log.csv", mime="text/csv")
-else:
-    st.warning("Attendance system is only available from 9:30 AM to 10:00 AM.")
