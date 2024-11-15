@@ -1,76 +1,126 @@
 import streamlit as st
-import torch
 import pickle
-from torch import nn
+import torch
+import torchvision.models as models
+import torch.nn as nn
+import torchvision.transforms as transforms
 from PIL import Image
+from datetime import datetime
+import os
 import pandas as pd
-import datetime
-from torchvision import transforms
+import io
 
-# Define the custom model class (matching your original code)
+# Custom emotion detection model class
 class EmotionRecognitionModel(nn.Module):
     def __init__(self, num_classes):
         super(EmotionRecognitionModel, self).__init__()
-        self.fc1 = nn.Linear(224 * 224 * 3, 512)  # First hidden layer
-        self.fc2 = nn.Linear(512, 256)             # Second hidden layer
-        self.fc3 = nn.Linear(256, num_classes)    # Output layer (for emotions)
+        self.features = models.resnet18(pretrained=False)  # Custom training, no pretraining
+        self.features.fc = nn.Linear(self.features.fc.in_features, num_classes)
 
     def forward(self, x):
-        x = x.view(x.size(0), -1)  # Flatten the image
-        x = torch.relu(self.fc1(x))  # Apply ReLU activation after first layer
-        x = torch.relu(self.fc2(x))  # Apply ReLU after second layer
-        x = self.fc3(x)  # Output layer
-        return x
+        return self.features(x)
 
-# Emotion classes (no label encoding needed)
-emotion_classes = ["surprise", "sad", "neutral", "happy", "fear", "disgust", "contempt", "anger"]
-
-# Load the trained model using torch.load
+# Load model and label encoder
 model_path = "emotion_detection_model.pkl"
+label_encoder_path = "label_encoding.pkl"
 
+# Load the model and label encoder using pickle
 with open(model_path, 'rb') as f:
-    model = pickle.load(f)  # Load the model without map_location
+    model = pickle.load(f)
 
-# Set the model to evaluation mode
+with open(label_encoder_path, 'rb') as f:
+    label_encoder = pickle.load(f)
+
+# Set the model to evaluation mode and move it to GPU (if available)
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+model = model.to(device)
 model.eval()
 
-# Define image transformations
+# Define transformation for input images
 transform = transforms.Compose([
-    transforms.Resize((224, 224)),
+    transforms.Resize((48, 48)),
     transforms.ToTensor(),
-    transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
 
-# Streamlit app title
-st.title("Emotion Recognition System")
+# Time check function (Working hours 9:30 AM to 10:00 AM)
+def is_within_working_time():
+    current_time = datetime.now().time()
+    start_time = datetime.strptime("09:30:00", "%H:%M:%S").time()
+    end_time = datetime.strptime("10:00:00", "%H:%M:%S").time()
+    return start_time <= current_time <= end_time
 
-# Upload an image
-uploaded_file = st.file_uploader("Choose an image file", type=["jpg", "jpeg", "png"])
+# Predict emotion and save results to CSV if within the working time
+def predict_emotion(image):
+    if not is_within_working_time():
+        st.warning("Model can only work between 9:30 AM and 10:00 AM.")
+        return
 
-if uploaded_file is not None:
-    # Display the uploaded image
-    image = Image.open(uploaded_file).convert('RGB')
-    st.image(image, caption="Uploaded Image", use_column_width=True)
+    # Load and preprocess image
+    image = Image.open(image).convert('RGB')
+    image = transform(image).unsqueeze(0).to(device)
 
-    # Preprocess the image
-    input_image = transform(image).unsqueeze(0)
-
-    # Predict emotion
+    # Get model predictions
     with torch.no_grad():
-        outputs = model(input_image)
-        _, predicted = torch.max(outputs, 1)
-        predicted_label = emotion_classes[predicted.item()]
+        output = model(image)
+        _, predicted_class = torch.max(output, 1)
+        predicted_emotion = label_encoder.inverse_transform([predicted_class.item()])[0]
 
-    st.write(f"Predicted Emotion: **{predicted_label}**")
+    # Get current timestamp
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-    # Option to download results as CSV
-    timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    result_data = pd.DataFrame({'Timestamp': [timestamp], 'Emotion': [predicted_label]})
+    # Save prediction to CSV
+    results = {
+        "image_path": str(image),
+        "predicted_emotion": predicted_emotion,
+        "timestamp": timestamp
+    }
+
+    # Check if the CSV file exists
+    csv_file = "emotion_predictions.csv"
+    if os.path.exists(csv_file):
+        # Append to CSV if file exists
+        df = pd.read_csv(csv_file)
+        df = df.append(results, ignore_index=True)
+    else:
+        # Create a new CSV file if it doesn't exist
+        df = pd.DataFrame([results])
     
-    csv = result_data.to_csv(index=False).encode('utf-8')
+    # Save the data to CSV
+    df.to_csv(csv_file, index=False)
+
+    st.success(f"Prediction: {predicted_emotion}")
+    st.write(f"Timestamp: {timestamp}")
+    st.write("Prediction saved to CSV.")
+
+    # Provide download link for CSV
+    with open(csv_file, 'rb') as f:
+        csv_data = f.read()
+
+    # Streamlit's file download feature
     st.download_button(
-        label="Download Results as CSV",
-        data=csv,
-        file_name='emotion_results.csv',
-        mime='text/csv'
+        label="Download Predictions CSV",
+        data=csv_data,
+        file_name=csv_file,
+        mime="text/csv"
     )
+
+# Streamlit App Interface
+def main():
+    st.title("Emotion Detection System")
+    
+    st.write("Upload an image to predict the emotion.")
+    
+    # File uploader for image
+    uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
+    
+    if uploaded_file is not None:
+        # Display the image
+        st.image(uploaded_file, caption="Uploaded Image", use_column_width=True)
+        
+        # Predict and show results
+        if st.button("Predict Emotion"):
+            predict_emotion(uploaded_file)
+
+if __name__ == "__main__":
+    main()
