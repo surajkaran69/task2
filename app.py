@@ -1,15 +1,12 @@
 import streamlit as st
-import torch
 import pickle
-from torch.utils.data import Dataset
 from torch import nn
 from PIL import Image
-import os
 import pandas as pd
 import datetime
 from torchvision import transforms
 
-# Define your custom model class (matching your original code)
+# Define the custom model class (matching your original code)
 class EmotionRecognitionModel(nn.Module):
     def __init__(self, num_classes):
         super(EmotionRecognitionModel, self).__init__()
@@ -27,12 +24,11 @@ class EmotionRecognitionModel(nn.Module):
 # Emotion classes (no label encoding needed)
 emotion_classes = ["surprise", "sad", "neutral", "happy", "fear", "disgust", "contempt", "anger"]
 
-# Load the trained model
+# Load the trained model (using pickle.load if saved as .pkl)
 model_path = "emotion_detection_model.pkl"
 
-# Load model on CPU
 with open(model_path, 'rb') as f:
-    model = pickle.load(f, map_location=torch.device('cpu'))
+    model = pickle.load(f)  # Load the model without map_location
 
 # Set the model to evaluation mode
 model.eval()
