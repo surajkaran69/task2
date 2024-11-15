@@ -22,7 +22,7 @@ class EmotionRecognitionModel(nn.Module):
 
 # Load model and label encoder
 model_path = "emotion_detection_model.pkl"
-label_encoder_path = "label_encoding.pkl"
+label_encoder_path = "label_encoder.pkl"
 
 # Load the model and label encoder using pickle
 with open(model_path, 'rb') as f:
