@@ -1,125 +1,91 @@
-import os
-import cv2
-import torch
+import streamlit as st
 import pandas as pd
-from datetime import datetime
+import pickle
+import torch
 from torchvision import transforms
 from PIL import Image
-import pickle
-import streamlit as st
+import datetime
 
-# Paths
-model_path = "emotion_detection_model.pkl"  # Path to your trained model
-label_encoder_path = "label_encoder.pkl"  # Path to your label encoder
-output_csv_path = 'attendance.csv'  # Output attendance file
+# Load model and label encoder
+model_path = 'emotion_detection_model.pkl'
+label_encoder_path = 'label_encoder.pkl'
 
-# Time Window
-start_time = "09:30"
-end_time = "10:00"
-
-# Load the Model
 with open(model_path, 'rb') as f:
     model = pickle.load(f)
-model.eval()
 
-# Load the Label Encoder
 with open(label_encoder_path, 'rb') as f:
     label_encoder = pickle.load(f)
 
-# Transformations
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+model = model.to(device)
+model.eval()
+
+# Define transformations
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
     transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
 ])
 
-# Attendance Data
-attendance_data = []
-
-# Helper Function to Check Time
-def is_within_time_window():
-    now = datetime.now().time()
-    start = datetime.strptime(start_time, "%H:%M").time()
-    end = datetime.strptime(end_time, "%H:%M").time()
-    return start <= now <= end
-
-# Process Frame and Log Attendance
-def process_frame(frame):
-    global attendance_data
-
-    # Convert OpenCV BGR to PIL RGB
-    image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-
-    # Apply Transformations
-    input_tensor = transform(image).unsqueeze(0)
-
-    # Get Predictions
+# Function to predict emotion
+def predict_emotion(image):
+    image = transform(image).unsqueeze(0).to(device)
     with torch.no_grad():
-        outputs = model(input_tensor)
-        student_idx, emotion_idx = outputs[0].argmax(1).item(), outputs[1].argmax(1).item()
+        output = model(image)
+        _, predicted = torch.max(output, 1)
+    emotion = label_encoder.inverse_transform([predicted.item()])[0]
+    return emotion
 
-    student_name = label_encoder.inverse_transform([student_idx])[0]
-    emotion = label_encoder.inverse_transform([emotion_idx])[0]
-
-    # Record Attendance
-    if is_within_time_window():
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        attendance_entry = {
-            'Name': student_name,
-            'Emotion': emotion,
-            'Timestamp': timestamp,
-            'Status': 'Present'
-        }
-
-        # Avoid duplicate entries for the same student
-        if not any(entry['Name'] == student_name for entry in attendance_data):
-            attendance_data.append(attendance_entry)
-
-    return student_name, emotion
-
-# Save Attendance to CSV
-def save_attendance():
-    df = pd.DataFrame(attendance_data)
-    df.to_csv(output_csv_path, index=False)
-    st.success(f"Attendance saved to {output_csv_path}!")
+# Attendance data
+attendance = []
 
 # Streamlit UI
-def main():
-    st.title("Attendance System with Emotion Detection")
-    st.text("This application runs from 9:30 AM to 10:00 AM only.")
+st.title("Class Attendance and Emotion Detection")
+st.write("This app detects students' emotions and marks attendance between 9:30 AM and 10:00 AM.")
 
-    # Streamlit components for video input
-    run_app = st.checkbox("Run Attendance System")
+# Check if the current time is within the allowed time
+now = datetime.datetime.now()
+start_time = datetime.time(9, 30)
+end_time = datetime.time(10, 0)
 
-    # Placeholder for live updates
-    frame_placeholder = st.empty()
-    info_placeholder = st.empty()
+if start_time <= now.time() <= end_time:
+    uploaded_file = st.file_uploader("Upload a photo of the class:", type=["jpg", "jpeg", "png"])
 
-    if run_app:
-        cap = cv2.VideoCapture(0)
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                st.warning("No camera input detected!")
-                break
+    if uploaded_file:
+        image = Image.open(uploaded_file).convert('RGB')
+        st.image(image, caption='Uploaded Image', use_column_width=True)
+        
+        # Predict emotion
+        emotion = predict_emotion(image)
+        st.write(f"Detected Emotion: {emotion}")
 
-            # Process frame
-            student_name, emotion = process_frame(frame)
+        # Mark attendance
+        name = st.text_input("Enter the student's name:")
+        if st.button("Mark Attendance"):
+            if name:
+                timestamp = now.strftime('%Y-%m-%d %H:%M:%S')
+                attendance.append({"Name": name, "Emotion": emotion, "Timestamp": timestamp})
+                st.success(f"Attendance marked for {name}!")
+            else:
+                st.error("Please enter the student's name.")
+else:
+    st.warning("The attendance system is only active between 9:30 AM and 10:00 AM.")
 
-            # Update UI
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            frame_placeholder.image(frame_rgb, caption="Live Camera Feed", use_column_width=True)
-            info_placeholder.markdown(f"**Student:** {student_name}  \n**Emotion:** {emotion}")
+# Display attendance
+if st.button("View Attendance"):
+    if attendance:
+        attendance_df = pd.DataFrame(attendance)
+        st.dataframe(attendance_df)
+    else:
+        st.warning("No attendance records yet.")
 
-            # Exit if attendance time is over
-            if not is_within_time_window():
-                st.warning("Attendance time is over. Saving attendance...")
-                break
-
-        cap.release()
-
-        # Save attendance
-        save_attendance()
-
-if __name__ == "__main__":
-    main()
+# Download attendance CSV
+if attendance:
+    attendance_df = pd.DataFrame(attendance)
+    csv = attendance_df.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="Download Attendance CSV",
+        data=csv,
+        file_name='attendance.csv',
+        mime='text/csv'
+    )
