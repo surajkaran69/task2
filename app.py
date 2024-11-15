@@ -1,4 +1,5 @@
 import streamlit as st
+import torch
 import pickle
 from torch import nn
 from PIL import Image
@@ -24,7 +25,7 @@ class EmotionRecognitionModel(nn.Module):
 # Emotion classes (no label encoding needed)
 emotion_classes = ["surprise", "sad", "neutral", "happy", "fear", "disgust", "contempt", "anger"]
 
-# Load the trained model (using pickle.load if saved as .pkl)
+# Load the trained model using torch.load
 model_path = "emotion_detection_model.pkl"
 
 with open(model_path, 'rb') as f:
