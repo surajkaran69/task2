@@ -7,8 +7,9 @@ from PIL import Image
 import os
 import pandas as pd
 import datetime
+from torchvision import transforms
 
-
+# Define your custom model class (matching your original code)
 class EmotionRecognitionModel(nn.Module):
     def __init__(self, num_classes):
         super(EmotionRecognitionModel, self).__init__()
@@ -24,11 +25,12 @@ class EmotionRecognitionModel(nn.Module):
         return x
 
 # Load the trained model and label encoder
-model_path = "emotion_detection_model.pkl"
+model_path = "emotion_model.pkl"
 label_encoder_path = "label_encoder.pkl"
 
+# Load model on CPU (even if it was trained on a GPU)
 with open(model_path, 'rb') as f:
-    model = pickle.load(f)
+    model = pickle.load(f, map_location=torch.device('cpu'))
 
 with open(label_encoder_path, 'rb') as f:
     label_encoder = pickle.load(f)
