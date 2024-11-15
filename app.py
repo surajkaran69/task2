@@ -1,12 +1,16 @@
 import streamlit as st
-import pandas as pd
-import pickle
 import torch
-from torchvision import transforms
 from PIL import Image
+import numpy as np
+import pickle
+import pandas as pd
+from torchvision import transforms
+from torch import nn
+from io import BytesIO
 import datetime
+import os
 
-# Load model and label encoder
+# Load the trained model and label encoder
 model_path = 'emotion_detection_model.pkl'
 label_encoder_path = 'label_encoder.pkl'
 
@@ -16,76 +20,74 @@ with open(model_path, 'rb') as f:
 with open(label_encoder_path, 'rb') as f:
     label_encoder = pickle.load(f)
 
+# Define the device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = model.to(device)
-model.eval()
 
-# Define transformations
+# Define the transformations
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
     transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
 ])
 
-# Function to predict emotion
+# Helper function to predict emotion
 def predict_emotion(image):
+    image = image.convert("RGB")
     image = transform(image).unsqueeze(0).to(device)
+    model.eval()
     with torch.no_grad():
-        output = model(image)
-        _, predicted = torch.max(output, 1)
-    emotion = label_encoder.inverse_transform([predicted.item()])[0]
-    return emotion
-
-# Attendance data
-attendance = []
+        outputs = model(image)
+        _, predicted = torch.max(outputs, 1)
+        emotion = label_encoder.inverse_transform([predicted.item()])
+    return emotion[0]
 
 # Streamlit UI
-st.title("Class Attendance and Emotion Detection")
-st.write("This app detects students' emotions and marks attendance between 9:30 AM and 10:00 AM.")
+st.title('Attendance and Emotion Detection System')
 
-# Check if the current time is within the allowed time
-now = datetime.datetime.now()
+# Time check to only allow detection between 9:30 AM and 10:00 AM
+current_time = datetime.datetime.now().time()
 start_time = datetime.time(9, 30)
 end_time = datetime.time(10, 0)
 
-if start_time <= now.time() <= end_time:
-    uploaded_file = st.file_uploader("Upload a photo of the class:", type=["jpg", "jpeg", "png"])
+if start_time <= current_time <= end_time:
+    # Image Upload
+    uploaded_file = st.file_uploader("Upload an image of the student", type=["jpg", "jpeg", "png"])
 
-    if uploaded_file:
-        image = Image.open(uploaded_file).convert('RGB')
-        st.image(image, caption='Uploaded Image', use_column_width=True)
-        
+    if uploaded_file is not None:
+        # Open the uploaded image
+        image = Image.open(uploaded_file)
+        st.image(image, caption="Uploaded Image", use_column_width=True)
+
         # Predict emotion
-        emotion = predict_emotion(image)
-        st.write(f"Detected Emotion: {emotion}")
+        predicted_emotion = predict_emotion(image)
+        st.write(f"Predicted Emotion: {predicted_emotion}")
 
-        # Mark attendance
-        name = st.text_input("Enter the student's name:")
+        # Log student presence and emotion with timestamp
         if st.button("Mark Attendance"):
-            if name:
-                timestamp = now.strftime('%Y-%m-%d %H:%M:%S')
-                attendance.append({"Name": name, "Emotion": emotion, "Timestamp": timestamp})
-                st.success(f"Attendance marked for {name}!")
+            current_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            student_data = {
+                "Timestamp": current_time,
+                "Emotion": predicted_emotion,
+                "Student": "Present"  # Assume the student is present when detected
+            }
+
+            # Load the existing attendance CSV, if available
+            if os.path.exists("attendance_log.csv"):
+                attendance_df = pd.read_csv("attendance_log.csv")
             else:
-                st.error("Please enter the student's name.")
+                attendance_df = pd.DataFrame(columns=["Timestamp", "Emotion", "Student"])
+
+            # Append new data
+            attendance_df = attendance_df.append(student_data, ignore_index=True)
+            attendance_df.to_csv("attendance_log.csv", index=False)
+
+            st.success("Attendance marked successfully!")
+
+            # Download link for the CSV
+            csv_file = BytesIO()
+            attendance_df.to_csv(csv_file, index=False)
+            csv_file.seek(0)
+            st.download_button(label="Download Attendance Log", data=csv_file, file_name="attendance_log.csv", mime="text/csv")
 else:
-    st.warning("The attendance system is only active between 9:30 AM and 10:00 AM.")
-
-# Display attendance
-if st.button("View Attendance"):
-    if attendance:
-        attendance_df = pd.DataFrame(attendance)
-        st.dataframe(attendance_df)
-    else:
-        st.warning("No attendance records yet.")
-
-# Download attendance CSV
-if attendance:
-    attendance_df = pd.DataFrame(attendance)
-    csv = attendance_df.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="Download Attendance CSV",
-        data=csv,
-        file_name='attendance.csv',
-        mime='text/csv'
-    )
+    st.warning("Attendance system is only available from 9:30 AM to 10:00 AM.")
