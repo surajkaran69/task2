@@ -1,14 +1,30 @@
 import streamlit as st
 import torch
 import pickle
-from torchvision import transforms
+from torch.utils.data import Dataset
+from torch import nn
 from PIL import Image
 import os
 import pandas as pd
 import datetime
 
+
+class EmotionRecognitionModel(nn.Module):
+    def __init__(self, num_classes):
+        super(EmotionRecognitionModel, self).__init__()
+        self.fc1 = nn.Linear(224 * 224 * 3, 512)  # First hidden layer
+        self.fc2 = nn.Linear(512, 256)             # Second hidden layer
+        self.fc3 = nn.Linear(256, num_classes)    # Output layer (for emotions)
+
+    def forward(self, x):
+        x = x.view(x.size(0), -1)  # Flatten the image
+        x = torch.relu(self.fc1(x))  # Apply ReLU activation after first layer
+        x = torch.relu(self.fc2(x))  # Apply ReLU after second layer
+        x = self.fc3(x)  # Output layer
+        return x
+
 # Load the trained model and label encoder
-model_path = "emotion_detection_model.pkl"
+model_path = "emotion_model.pkl"
 label_encoder_path = "label_encoder.pkl"
 
 with open(model_path, 'rb') as f:
@@ -60,4 +76,3 @@ if uploaded_file is not None:
         file_name='emotion_results.csv',
         mime='text/csv'
     )
-
