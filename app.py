@@ -24,7 +24,7 @@ class EmotionRecognitionModel(nn.Module):
         return x
 
 # Load the trained model and label encoder
-model_path = "emotion_model.pkl"
+model_path = "emotion_detection_model.pkl"
 label_encoder_path = "label_encoder.pkl"
 
 with open(model_path, 'rb') as f:
